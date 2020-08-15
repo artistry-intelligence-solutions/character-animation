@@ -1,0 +1,312 @@
+<!doctype html>
+<html class="no-js" lang="">
+
+<head>
+  <meta charset="utf-8">
+  <title></title>
+  <meta name="description" content="">
+  <meta name="viewport" content="width=device-width
+  initial-scale=1">
+
+  <meta property="og:title" content="">
+  <meta property="og:type" content="">
+  <meta property="og:url" content="">
+  <meta property="og:image" content="">
+
+  <link rel="manifest" href="site.webmanifest">
+  <link rel="apple-touch-icon" href="icon.png">
+
+  <meta name="theme-color" content="#fafafa">
+</head>
+
+<body>
+  <div class="loading" id="js-loader">
+    <div class="loader"></div>
+  </div>
+  <script src='https://cdnjs.cloudflare.com/ajax/libs/three.js/108/three.min.js'></script>
+  <script src='https://cdn.jsdelivr.net/gh/mrdoob/Three.js@r92/examples/js/loaders/GLTFLoader.js'></script>
+  <script type="module">
+    let container;
+    let camera;
+    let currentlyAnimating = false;
+    let idle;
+    let mixer;
+    let model;
+    let neck;
+    let possibleAnims;
+    let renderer;
+    let scene;
+    let stacyTexture;
+    let waist;
+
+    const clock = new THREE.Clock();
+    const loaderAnim = document.getElementById('js-loader');
+    const modelPath = 'model/stacy_lightweight.glb';
+    const raycaster = new THREE.Raycaster();
+
+    init();
+
+    function init() {
+      container = document.createElement('div');
+      document.body.appendChild(container);
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf1f1f1);
+      scene.fog = new THREE.Fog(0xf1f1f1, 60, 100);
+
+      renderer = new THREE.WebGLRenderer({
+        antialias: true
+      });
+      renderer.shadowMap.enabled = true;
+      renderer.setPixelRatio(window.devicePixelRatio);
+      document.body.appendChild(renderer.domElement);
+
+      camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.z = 30;
+      camera.position.x = 0;
+      camera.position.y = -3;
+
+      const loader = new THREE.GLTFLoader();
+      loader.load(modelPath, (gltf) => {
+        model = gltf.scene;
+        let fileAnimations = gltf.animations;
+        // stacy texture
+        stacyTexture = new THREE.TextureLoader().load('/img/stacy.jpg');
+        // flip texture so that it's the right way up
+        stacyTexture.flipY = false;
+        const stacyMaterial = new THREE.MeshPhongMaterial({
+          map: stacyTexture,
+          color: 0xffffff,
+          skinning: true
+        });
+        model.traverse(object => {
+          // find  names
+          // if (object.isBone) {
+          //   console.log(object.name);
+          // }
+          if (object.isMesh) {
+            object.castShadow = true;
+            object.receiveShadow = true;
+            object.material = stacyMaterial;
+          }
+          // reference neck and waist bones
+          if (object.isBone && object.name === 'mixamorigNeck') {
+            neck = object;
+          }
+          if (object.isBone && object.name === 'mixamorigSpine') {
+            waist = object;
+          }
+        });
+        // set the models inital scale
+        model.scale.set(7, 7, 7);
+        model.position.y = -11;
+        scene.add(model);
+        loaderAnim.remove();
+
+        // sway animation
+        mixer = new THREE.AnimationMixer(model);
+        let clips = fileAnimations.filter(val => val.name !== 'idle');
+        let idleAnim = THREE.AnimationClip.findByName(fileAnimations, 'idle');
+
+        possibleAnims = clips.map(val => {
+          let clip = THREE.AnimationClip.findByName(clips, val.name);
+          clip.tracks.splice(3, 3);
+          clip.tracks.splice(9, 3);
+          clip = mixer.clipAction(clip);
+          return clip;
+        });
+
+        idleAnim.tracks.splice(3, 3);
+        idleAnim.tracks.splice(9, 3);
+        idle = mixer.clipAction(idleAnim);
+        idle.play();
+      }, undefined, (error) => {
+        console.error(error);
+      });
+
+      let hemiLight = new THREE.HemisphereLight(0xffffff, 0xffffff, 0.61);
+      hemiLight.position.set(0, 50, 0);
+      scene.add(hemiLight);
+
+      let d = 8.25;
+      let dirLight = new THREE.DirectionalLight(0xffffff, 0.54);
+      dirLight.position.set(-8, 12, 8);
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize = new THREE.Vector2(1024, 1024);
+      dirLight.shadow.camera.near = 0.1;
+      dirLight.shadow.camera.far = 1500;
+      dirLight.shadow.camera.left = d * -1;
+      dirLight.shadow.camera.right = d;
+      dirLight.shadow.camera.bottom = d * -1;
+      scene.add(dirLight);
+
+      // circle
+      const geometry = new THREE.SphereGeometry(8, 32, 32);
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xff6b94
+      });
+      const sphere = new THREE.Mesh(geometry, material);
+      sphere.position.z = -15;
+      sphere.position.y = -2.5;
+      sphere.position.x = -0.25;
+      scene.add(sphere);
+
+      const floorGeometry = new THREE.PlaneGeometry(5000, 5000, 1, 1);
+      const floorMaterial = new THREE.MeshPhongMaterial({
+        color: 0xeeeeee,
+        shininess: 0
+      });
+
+      let floor = new THREE.Mesh(floorGeometry, floorMaterial);
+      floor.rotation.x = -0.5 * Math.PI;
+      floor.receiveShadow = true;
+      floor.position.y = -11;
+      scene.add(floor);
+    }
+
+    function getMouseDegrees(x, y, degreeLimit) {
+      let dx = 0;
+      let dy = 0;
+      let xdiff;
+      let xPercentage;
+      let ydiff;
+      let yPercentage;
+
+      let w = {
+        x: window.innerWidth,
+        y: window.innerHeight
+      };
+
+      // left - rotates neck left between 0 and -degreelimit
+      // 1. fi cursor is in the left half of screen
+      if (x <= w.x / 2) {
+        // 2. get the difference between middle of screen and cursor position
+        xdiff = w.x / 2 - x;
+        // 3. find the percentage of that differnce (percentage toward edge of screen
+        xPercentage = (xdiff / (w.x / 2)) * 100;
+        // 4. convert that to a percentage of the maximum rotation we allow for the neck
+        dx = ((degreeLimit * xPercentage) / 100) * -1;
+      }
+      if (x >= w.x / 2) {
+        xdiff = x - w.x / 2;
+        xPercentage = (xdiff / (w.x / 2)) * 100;
+        dx = (degreeLimit * xPercentage) / 100;
+      }
+      // right (rotates neck up between 0 and -degreeLimit)
+      if (y <= w.y / 2) {
+        ydiff = w.y / 2 - y;
+        yPercentage = (ydiff / (w.y / 2)) * 100;
+        // note that I cut degreelimit in half when she looks up
+        dy - (((degreeLimit * 0.5) * yPercentage) / 100) * -1;
+      }
+      // down rotates neck down between 0 and degreelimit
+      if (y >= w.y / 2) {
+        ydiff = y - w.y / 2;
+        yPercentage = (ydiff / (w.y / 2)) * 100;
+        dy = (degreeLimit * yPercentage) / 100;
+      }
+      return {
+        x: dx,
+        y: dy
+      };
+    }
+
+    function getMousePos(event) {
+      return {
+        x: event.clientX,
+        y: event.clientY
+      };
+    }
+
+    function moveJoint(mouse, joint, degreeLimit) {
+      let degrees = getMouseDegrees(mouse.x, mouse.y, degreeLimit);
+      joint.rotation.y = THREE.Math.degToRad(degrees.x);
+      joint.rotation.x = THREE.Math.degToRad(degrees.y);
+    }
+
+    function playModifierAnimation(from, fSpeed, to, tSpeed) {
+      to.setLoop(THREE.LoopOnce);
+      to.reset();
+      to.play();
+      from.crossFadeTo(to, fSpeed, true);
+      setTimeout(() => {
+        from.enabled = true;
+        to.crossFadeTo(from, tSpeed, true);
+        currentlyAnimating = false;
+      }, to._clip.duration * 1000 - ((tSpeed + fSpeed) * 1000));
+    }
+
+    function playOnClick() {
+      let anim = Math.floor(Math.random() * possibleAnims.length) + 0;
+      playModifierAnimation(idle, 0.24, possibleAnims[anim], 0.25);
+    }
+
+    function raycast(event, touch = false) {
+      let mouse = {};
+      if (touch) {
+        mouse.x = 2 * (event.changedTouches[0].clientX / window.innerWidth) - 1;
+        mouse.y = 1 - 2 * (event.changedTouches[0].clientY / window.innerHeight);
+      } else {
+        mouse.x = 2 * (event.clientX / window.innerWidth) - 1;
+        mouse.y = 1 - 2 * (event.clientY / window.innerHeight);
+      }
+      // update the picking ray with the camera and mouse position
+      raycaster.setFromCamera(mouse, camera);
+
+      // calculate objects intersecting the picking ray
+      const intersects = raycaster.intersectObjects(scene.children, true);
+      if (intersects[0]) {
+        const object = intersects[0].object;
+        if (object.name === 'stacy') {
+          if (!currentlyAnimating) {
+            currentlyAnimating = true;
+            playOnClick();
+          }
+        }
+      }
+    }
+
+    function resizeRendererToDisplaySize(renderer) {
+      const container = renderer.domElement;
+      let width = window.innerWidth;
+      let height = window.innerHeight;
+      let containerPixelWidth = container.width / window.devicePixelRatio;
+      let containerPixelHeight = container.height / window.devicePixelRatio;
+
+      const needResize = containerPixelWidth !== width || containerPixelHeight !== height;
+      if (needResize) {
+        renderer.setSize(width, height, false);
+      }
+      return needResize;
+    }
+    
+    function update() {
+      if (mixer) {
+        mixer.update(clock.getDelta());
+      }
+      if (resizeRendererToDisplaySize(renderer)) {
+        const container = renderer.domElement;
+        camera.aspect = container.clientWidth / container.clientHeight;
+        camera.updateProjectionMatrix();
+      }
+      renderer.render(scene, camera);
+      requestAnimationFrame(update);
+    }
+
+    update();
+
+    window.addEventListener('click', event => raycast(event));
+    window.addEventListener('touchend', event => raycast(event, true));
+
+    document.addEventListener('mousemove', (event) => {
+      console.log(event);
+      const mousecoords = getMousePos(event);
+      if (neck && waist)  {
+        moveJoint(mousecoords, neck, 50);
+        moveJoint(mousecoords, waist, 30);
+      }
+    });
+
+  </script>
+</body>
+
+</html>

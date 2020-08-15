@@ -1,0 +1,32 @@
+{
+  "name": "interactive-3d-character",
+  "version": "0.0.1",
+  "description": "Interactive 3D Character Tutorial - https://tympanus.net/codrops/2019/10/14/how-to-create-an-interactive-3d-character-with-three-js/",
+  "keywords": [],
+  "license": "ISC",
+  "author": "Kyle Wetton",
+  "scripts": {
+    "build": "parcel build index.html",
+    "dev": "parcel index.html --open",
+    "start": "npm run build && npm run dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "parcel-bundler": "^1.12.4"
+  },
+  "main": "js/main.js",
+  "directories": {
+    "doc": "doc"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/artistry-intelligence-solutions/interactive-3d-character.git"
+  },
+  "bugs": {
+    "url": "https://github.com/artistry-intelligence-solutions/interactive-3d-character/issues"
+  },
+  "homepage": "https://github.com/artistry-intelligence-solutions/interactive-3d-character#readme",
+  "dependencies": {
+    "three": "^0.119.1"
+  }
+}
